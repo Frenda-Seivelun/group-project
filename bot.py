@@ -1,3 +1,5 @@
+import requests
+import json
 import os
 import logging
 from datetime import datetime
@@ -87,24 +89,54 @@ async def save_conversation(user_id: int, username: str, message: str, response:
         logger.error(f"保存对话失败: {e}")
 
 async def call_llm(user_message: str, history_context: str) -> str:
-    """调用HKBU LLM API"""
+    """调用 HKBU GenAI API（REST格式）"""
     try:
+        # HKBU API 配置
+        api_key = os.getenv('OPENAI_API_KEY')  # 实际是你的 UUID
+        base_url = os.getenv('OPENAI_BASE_URL', 'https://genai.hkbu.edu.hk/api/v0/rest')
+        model = os.getenv('MODEL', 'gpt-5-mini')
+        api_ver = os.getenv('API_VER', '2024-12-01-preview')
+        
+        # 构建系统提示词
         system_prompt = f"""你是一个有帮助的校园助手。
 以下是你们之前的对话历史：
 {history_context}
 
 请基于历史记录提供连贯的回复。"""
         
-        response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",  # 根据HKBU提供的模型名称调整
-            messages=[
+        # 构建请求体
+        payload = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            temperature=0.7,
-            max_tokens=500
+            "temperature": 0.7,
+            "max_tokens": 500
+        }
+        
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": api_key,  # 注意：这里是 api-key 不是 Authorization
+            "api-version": api_ver
+        }
+        
+        # 发送请求
+        response = requests.post(
+            base_url,
+            headers=headers,
+            json=payload,
+            timeout=30
         )
-        return response.choices[0].message.content
+        
+        if response.status_code == 200:
+            result = response.json()
+            # 根据实际返回格式调整（可能是 result['choices'][0]['message']['content']）
+            return result.get('choices', [{}])[0].get('message', {}).get('content', '暂无回复')
+        else:
+            logger.error(f"API调用失败: {response.status_code} - {response.text}")
+            return "抱歉，API服务暂时不可用，请稍后再试。"
+            
     except Exception as e:
         logger.error(f"LLM调用失败: {e}")
         return "抱歉，我现在有点累，请稍后再试。"
