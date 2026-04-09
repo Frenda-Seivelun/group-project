@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build: .
+    container_name: hkbu-telegram-bot
+    restart: always  # 崩溃自动重启
+    env_file:
+      - .env  # 从.env文件读取密钥
+    volumes:
+      - ./logs:/app/logs  # 持久化日志
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
