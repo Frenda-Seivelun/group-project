@@ -3,12 +3,13 @@ version: '3.8'
 services:
   telegram-bot:
     build: .
+    pull_policy: build  # 添加这一行，跳过在线拉取
     container_name: hkbu-telegram-bot
-    restart: always  # 崩溃自动重启
+    restart: always
     env_file:
-      - .env  # 从.env文件读取密钥
+      - .env
     volumes:
-      - ./logs:/app/logs  # 持久化日志
+      - ./logs:/app/logs
     logging:
       driver: "json-file"
       options:

@@ -89,50 +89,54 @@ async def save_conversation(user_id: int, username: str, message: str, response:
         logger.error(f"保存对话失败: {e}")
 
 async def call_llm(user_message: str, history_context: str) -> str:
-    """调用 HKBU GenAI API（REST格式）"""
+    """调用 HKBU GenAI API（正确格式）"""
     try:
-        # HKBU API 配置
-        api_key = os.getenv('OPENAI_API_KEY')  # 实际是你的 UUID
+        # 从环境变量获取配置
+        api_key = os.getenv('OPENAI_API_KEY')
         base_url = os.getenv('OPENAI_BASE_URL', 'https://genai.hkbu.edu.hk/api/v0/rest')
         model = os.getenv('MODEL', 'gpt-5-mini')
         api_ver = os.getenv('API_VER', '2024-12-01-preview')
         
         # 构建系统提示词
-        system_prompt = f"""你是一个有帮助的校园助手。
+        system_prompt = f"""你是一个有帮助的HKBU校园助手。
 以下是你们之前的对话历史：
 {history_context}
 
-请基于历史记录提供连贯的回复。"""
+请基于历史记录提供连贯、友好的回复。"""
         
-        # 构建请求体
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 500
-        }
+        # 构建消息
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
         
+        # 正确的 URL 格式（关键修改！）
+        url = f"{base_url}/deployments/{model}/chat/completions?api-version={api_ver}"
+        
+        # 请求头
         headers = {
+            "accept": "application/json",
             "Content-Type": "application/json",
-            "api-key": api_key,  # 注意：这里是 api-key 不是 Authorization
-            "api-version": api_ver
+            "api-key": api_key
         }
         
-        # 发送请求
-        response = requests.post(
-            base_url,
-            headers=headers,
-            json=payload,
-            timeout=30
-        )
+        # 请求体
+        payload = {
+            "messages": messages,
+            "temperature": 1,
+            "max_tokens": 500,
+            "top_p": 1,
+            "stream": False
+        }
+
+        
+        logger.info(f"调用 API: {url}")
+        response = requests.post(url, json=payload, headers=headers, timeout=120)
         
         if response.status_code == 200:
             result = response.json()
-            # 根据实际返回格式调整（可能是 result['choices'][0]['message']['content']）
-            return result.get('choices', [{}])[0].get('message', {}).get('content', '暂无回复')
+            # 解析返回内容
+            return result['choices'][0]['message']['content']
         else:
             logger.error(f"API调用失败: {response.status_code} - {response.text}")
             return "抱歉，API服务暂时不可用，请稍后再试。"
@@ -220,6 +224,17 @@ def main():
     app.add_handler(CommandHandler("clear", clear_history))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    async def post_init(application: Application):
+        commands = [
+            ("start", "开始使用机器人"),
+            ("clear", "清除对话记忆"),
+            ("stats", "查看使用统计")
+        ]
+        await application.bot.set_my_commands(commands)
+        logger.info("Bot commands registered successfully")
+    
+    app.post_init = post_init
     
     # 启动
     logger.info("🤖 Telegram Bot 启动中...")
